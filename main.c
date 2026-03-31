@@ -5,8 +5,10 @@
 
 // Definições iniciais
 typedef struct Tarefa {
-    char descricao[1000];
+    char descricao[100];
     struct Tarefa* prox;
+    int prioridade;
+    int estado; // 0 para pendente e 1 para concluído
 } Tarefa;
 
 Tarefa* head = NULL;
@@ -14,30 +16,23 @@ Tarefa* tail = NULL; // Se for para inserir na última posição, então que vá
 
 int tamanho = 0; // Útil para verificar se a posição informada é a última
 
-// Função de buscar trecho (Adicionar em outra biblioteca)
-int buscar_trecho(char* trecho, char* todo) {
-    // trecho -> O trecho buscado
-    // todo -> A string em que o trecho será procurado
-    // Retorna 1 se contém, 0 se não contém
-    // Usar strstr é mais robusto, seguro e eficiente.
-    if (strstr(todo, trecho) != NULL) {
-        return 1; // Encontrou o trecho
-    }
-    return 0; // Não encontrou
+// Remover \n
+void remover_barran(char* texto) {
+    int i;
+    for(i = 0; texto[i] != '\n'; i++);
+    texto[i] = '\0';
 }
 
 // Função de inserir
-int inserir_tarefa(char* descricao, int pos) {
+int inserir_tarefa(char* descricao, int prioridade, int pos) {
     // descricao -> String de qualquer tamanho
     // pos -> Posição específica
     // 0 para sucesso, 1 para posição inválida
 
     // Tarefa nova
     Tarefa* nova = (Tarefa*)malloc(sizeof(Tarefa));
-    if (nova == NULL) {
-        // Falha na alocação de memória
-        return 1;
-    }
+    (*nova).prioridade = prioridade;
+    (*nova).estado = 0;
     strcpy((*nova).descricao, descricao);
 
     // Adicionar em posição...
@@ -65,7 +60,7 @@ int inserir_tarefa(char* descricao, int pos) {
 
             Tarefa* item_ant = head;
             for(int i = 1; i < pos; i++) {
-                item_ant = (*item_ant).prox;
+                item_ant = (*head).prox;
             }
             (*nova).prox = (*item_ant).prox;
             (*item_ant).prox = nova;
@@ -75,185 +70,215 @@ int inserir_tarefa(char* descricao, int pos) {
     }
 }
 
-// Função de buscar
-int buscar_tarefa(char* trecho, Tarefa*** lista_ret_ptr, Tarefa*** listant_ret_ptr, int** indices_ptr, int sem_listant) {
-    // trecho -> Um trecho a ser procurado
-    // lista_ret_ptr -> Ponteiro para o ponteiro que armazenará os resultados
-    // listant_ret_ptr -> Ponteiro para o ponteiro que armazenará o item anterior de cada, necessário para remover_tarefa()
-    // indices_ptr -> Ponteiro para o ponteiro que armazenará o indíce de cada
-    // sem_listant -> Não armazenar no listant_ret se for diferente de 0
-    // Retorna a quantidade de resultados
-    
-    // Inicializa ponteiros de saída para NULL
-    *lista_ret_ptr = NULL;
-    if (indices_ptr != NULL) *indices_ptr = NULL;
-    if (listant_ret_ptr != NULL) *listant_ret_ptr = NULL;
+// Função de remover
+int remover_tarefa(int pos) {
+    // pos -> Posição específica
+    // 0 para sucesso e 1 para não encontrado
 
-    if (head == NULL) {
-        return 0; // Lista vazia, nenhum resultado.
+    if(pos < 0 || pos >= tamanho) { // Posição inválida
+        return 1;
     }
 
-    // Ponteiros locais para os arrays que serão alocados
-    Tarefa** lista_ret = NULL;
-    Tarefa** listant_ret = NULL;
-    int* indices = NULL;
+    // Diminuindo tamanho
+    tamanho--;
 
-    int tam_alocado = 0; // Tamanho atual alocado para os arrays
-    int quant_encontrados = 0;    // Quantidade de resultados encontrados
+    // Posição 0
+    if(pos == 0) {
+        Tarefa* remover = head;
+        head = (*remover).prox;
+        free(remover);
 
-    Tarefa* atual = head;
-    Tarefa* anterior = NULL;
-    int indice_atual = 0;
-
-    // Percorrendo a lista
-    while (atual != NULL) {
-        if (buscar_trecho(trecho, atual->descricao)) {
-            // Se a capacidade atual for insuficiente, realocar (dobrando o tamanho)
-            if (quant_encontrados == tam_alocado) {
-                tam_alocado = (tam_alocado == 0) ? 2 : tam_alocado * 2;
-
-                // Realoca o array de resultados
-                Tarefa** temp_lista = realloc(lista_ret, tam_alocado * sizeof(Tarefa*));
-                if (temp_lista == NULL) { /* Erro de alocação */ free(lista_ret); free(listant_ret); free(indices); return -1; }
-                lista_ret = temp_lista;
-
-                // Realoca o array de índices
-                int* temp_indices = realloc(indices, tam_alocado * sizeof(int));
-                if (temp_indices == NULL) { /* Erro de alocação */ free(lista_ret); free(listant_ret); free(indices); return -1; }
-                indices = temp_indices;
-
-                // Realoca o array de nós anteriores (se necessário)
-                if (!sem_listant) {
-                    Tarefa** temp_listant = realloc(listant_ret, tam_alocado * sizeof(Tarefa*));
-                    if (temp_listant == NULL) { /* Erro de alocação */ free(lista_ret); free(listant_ret); free(indices); return -1; }
-                    listant_ret = temp_listant;
-                }
-            }
-
-            // Armazena o resultado encontrado
-            lista_ret[quant_encontrados] = atual;
-            indices[quant_encontrados] = indice_atual;
-            if (!sem_listant) {
-                listant_ret[quant_encontrados] = anterior;
-            }
-            quant_encontrados++;
+        if(tamanho == 0) { // Remover o tail se o removido for o único
+            tail = NULL;
         }
-        anterior = atual;
-        atual = atual->prox;
-        indice_atual++;
+
+        return 0;
     }
 
-    // Atribui os ponteiros alocados aos ponteiros de saída passados por referência
-    *lista_ret_ptr = lista_ret;
-    if (indices_ptr != NULL) *indices_ptr = indices;
-    if (!sem_listant && listant_ret_ptr != NULL) {
-        *listant_ret_ptr = listant_ret;
+    // Posição qualquer
+    Tarefa* remover_prox = head;
+    Tarefa* conectar;
+    for(int i = 1; i < pos; i++) {
+        remover_prox = (*remover_prox).prox;
+    }
+    conectar = (*((*remover_prox).prox)).prox;
+    free((*remover_prox).prox);
+    (*remover_prox).prox = conectar;
+    if(pos == tamanho) { // Se o último foi removido, atualizar tail
+        tail = remover_prox;
+    }
+    return 0;
+}
+
+// Função de concluir
+void marcar_como_concluido(int pos) {
+    Tarefa* alvo = head;
+    for(int i = 0; i < pos; i++) {
+        alvo = (*alvo).prox;
+    }
+    (*alvo).estado = 1;
+}
+
+// Função de buscar
+int buscar_tarefa(char* trecho) {
+    // trecho -> Um trecho a ser procurado
+    // Retorna a quantidade de resultados
+
+    int tam_return = 0;
+
+    Tarefa* imprimir = head;
+    for(int i = 0; i < tamanho; i++) {
+        if(strstr((*imprimir).descricao, trecho)) {
+            if((*imprimir).estado) {
+                printf("Concluido - %d - [%d] %s\n", (*imprimir).prioridade, i, (*imprimir).descricao);
+            } else {
+                printf("Pendente - %d - [%d] %s\n", (*imprimir).prioridade, i, (*imprimir).descricao);
+            }
+            tam_return++;
+        }
+        imprimir = (*imprimir).prox;
     }
 
-    return quant_encontrados;
+    if(tam_return == 0) {
+        printf("Vazio\n");
+    }
+
+    // Retornando a quantidade encontrada
+    return tam_return;
+}
+
+void remover_buscar_tarefa(char* trecho) {
+    // trecho -> Um trecho a ser procurado
+    // Retorna a quantidade de resultados
+
+    Tarefa* imprimir = head;
+    for(int i = 0; i < tamanho; i++) {
+        if(strstr((*imprimir).descricao, trecho)) {
+            remover_tarefa(i);
+            printf("Removido com sucesso!\n");
+            return;
+        }
+        imprimir = (*imprimir).prox;
+    }
+    printf("Não encontrado");
 }
 
 // Principal
 int main() {
-    int entr;
+    int entr, jump = 0;
 
     while(1) {
         system("clear");
 
-        printf("1- Listar\n2- Buscar\n3- Adicionar\n> ");
+        printf("1- Listar\n2- Buscar\n3- Adicionar\n4- Remover\n5- Marcar como concluído\n6- Sair\n> ");
         scanf("%d", &entr);
 
         switch(entr) {
             case 1:
-                // Listar
-
                 Tarefa* imprimir = head;
                 if(tamanho == 0) {
                     printf("Vazio\n");
                     break;
                 }
                 for(int i = 0; i < tamanho; i++) {
-                    printf("[%d] %s\n", i, (*imprimir).descricao);
+                    if((*imprimir).estado) {
+                        printf("Concluido - %d - [%d] %s\n", (*imprimir).prioridade, i, (*imprimir).descricao);
+                    } else {
+                        printf("Pendente - %d - [%d] %s\n", (*imprimir).prioridade, i, (*imprimir).descricao);
+                    }
                     imprimir = (*imprimir).prox;
                 }
                 break;
             case 2:
-                // Buscar
-                
-                char pes[100];
-                Tarefa** results = NULL; // IMPORTANTE: Inicializar com NULL
-                int* is = NULL;          // IMPORTANTE: Inicializar com NULL
+                char st[100];
+                printf("Pesquisar: "); scanf("%s", st);
 
-                printf("Pesquisar: ");
-                while (getchar() != '\n'); // Limpa o buffer do teclado
-                fgets(pes, sizeof(pes), stdin);
-                pes[strcspn(pes, "\n")] = 0; // Remove o '\n' que o fgets adiciona
-
-                // Passa o ENDEREÇO dos ponteiros para que a função possa modificá-los
-                int quant = buscar_tarefa(pes, &results, NULL, &is, 1);
-
-                if (quant == -1) {
-                    printf("Erro de memória durante a busca.\n");
-                } else if (quant == 0) {
-                    printf("Nenhum resultado encontrado para \"%s\".\n", pes);
-                } else {
-                    printf("Resultados encontrados:\n");
-                    for(int i = 0; i < quant; i++) {
-                        // Agora 'results' e 'is' apontam para a memória alocada
-                        printf("[%d] %s\n", is[i], results[i]->descricao);
-                    }
-                }
-
-                // Liberar a memória que foi alocada DENTRO de buscar_tarefa
-                free(results);
-                free(is);
-
+                buscar_tarefa(st);
                 break;
             case 3:
                 int p;
-                char tp[50];
-                char s[1000];
-                printf("Tipo de posição (I-início/F-fim/E-específica): ");
-                while (getchar() != '\n'); // Limpa o buffer do teclado
-                scanf("%s", &tp);
-                switch(tp[0]) {
-                    case 'i':
-                    case 'I':
-                        p = 0;
-                        break;
-                    case 'f':
-                    case 'F':
-                        p = tamanho;
-                        break;
-                    case 'e':
-                    case 'E':
-                        printf("Posição: "); scanf("%d", &p);
-                        break;
-                    default:
-                        printf("Opção inválida. Assumindo fim da lista.\n");
-                        p = tamanho;
-                        break;
-                }
-                printf("Descrição: ");
-                while (getchar() != '\n'); // Limpa o buffer do teclado
-                fgets(s, sizeof(s), stdin);
-                s[strcspn(s, "\n")] = 0; // Remove o '\n' que o fgets adiciona
+                int prio;
+                char entr_pos;
+                char s[100];
 
-                int resul = inserir_tarefa(s, p);
+                printf("(i) Inicio, (f) fim ou (e) específico: "); getchar(); scanf("%c", &entr_pos);
+                if(entr_pos == 'i') {
+                    p = 0;
+                } else {
+                    if(entr_pos == 'f') {
+                        p = tamanho;
+                    } else {
+                        printf("Posição: "); scanf("%d", &p);
+                    }
+                }
+                printf("Prioridade: "); scanf("%d", &prio);
+                printf("Descrição: "); getchar(); fgets(s, 100, stdin); remover_barran(s);
+
+                int resul = inserir_tarefa(s, prio, p);
 
                 if(resul) {
                     printf("Posição inválida\n");
                     break;
                 }
-                printf("Inserido com sucesso\n");
+                printf("Inserido com sucesso\n"); 
+                jump++; // fgets não deixa \n no buffer
                 break;
+            case 4:
+                char entr_qual;
+                printf("Remover por (p) posição ou (c) palavra-chave? "); getchar(); scanf("%c", &entr_qual);
+                if(entr_qual == 'p') {
+                    int p2;
+                    printf("Posição: "); scanf("%d", &p2);
+
+                    int resul2 = remover_tarefa(p);
+
+                    if(resul2) {
+                        printf("Posição inválida\n");
+                        break;
+                    }
+                    printf("Removido com sucesso\n");
+                    break;
+                } else {
+                    char st2[100];
+                    printf("Pesquisar: "); scanf("%s", st);
+
+                    remover_buscar_tarefa(st);
+                    break;
+                }
+            case 5:
+                int p3;
+                printf("Posição: "); scanf("%d", &p3);
+
+                marcar_como_concluido(p3);
+
+                printf("Marcado com sucesso\n");
+                break;
+            case 6:
+                Tarefa* liberar = head;
+                Tarefa* prox = NULL;
+
+                for(int i = 0; i < tamanho; i++) {
+                    if((*liberar).prox != NULL) {
+                        prox = (*liberar).prox;   
+                    }
+
+                    printf("Liberando o %d\n", i);
+                    free(liberar);
+
+                    liberar = prox;
+                }
+                return 0;
             default:
                 printf("Comando desconhecido\n");
                 break;
         }
 
         printf("\n---\n\nQualquer tecla para continuar...");
-        while (getchar() != '\n'); // Limpa o buffer do teclado
-        getchar(); // Espera o usuário pressionar Enter
+        if(jump) { // Não pega o \n se não tiver
+            jump--;
+        } else {
+            getchar();
+        }
+        getchar();
     }
 }
